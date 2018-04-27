@@ -1,18 +1,14 @@
-#[macro_use] extern crate lazy_static;
 extern crate pcap;
 extern crate pnet;
-#[macro_use] extern crate prettytable;
+extern crate prettytable;
 
 use prettytable::Table;
 use prettytable::row::Row;
 use prettytable::cell::Cell;
 
-
-use pnet::datalink::{self, NetworkInterface};
-
 use pnet::packet::Packet;
 use pnet::packet::arp::ArpPacket;
-use pnet::packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
+use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::icmpv6::Icmpv6Packet;
 use pnet::packet::icmp::{echo_reply, echo_request, IcmpPacket, IcmpTypes};
 use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
@@ -20,12 +16,8 @@ use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
-use pnet::util::MacAddr;
 
 use std::collections::HashMap;
-use std::env;
-use std::io::{self, Write};
-use std::process;
 use std::net::IpAddr;
 
 macro_rules! debug_println {
@@ -62,7 +54,7 @@ fn main() {
                 table.add_row(Row::new(vec![Cell::new(&ip.to_string()),
                               Cell::new(&stat.tcp_total_bytes.to_string()),
                               Cell::new(&stat.udp_total_bytes.to_string()),
-                              Cell::new(&stat.icmp_total_bytes.to_string())]));
+                              Cell::new(&stat.icmp_count_reqs.to_string())]));
             }
             table.printstd();
             println!();
@@ -78,7 +70,7 @@ fn handle_packet(dest_stats: &mut DestinationStatsMap, packet: pcap::Packet) {
     match ethernet.get_ethertype() {
         EtherTypes::Ipv4 => handle_ipv4_packet(dest_stats, interface_name, &ethernet),
         EtherTypes::Ipv6 => handle_ipv6_packet(dest_stats, interface_name, &ethernet),
-        EtherTypes::Arp => handle_arp_packet(dest_stats, interface_name, &ethernet),
+        EtherTypes::Arp => handle_arp_packet(interface_name, &ethernet),
         _ => {
             println!(
                 "[{}]: Unknown packet: {} > {}; ethertype: {:?} length: {}",
@@ -103,8 +95,7 @@ fn handle_error(error: pcap::Error) {
 struct DestinationStats {
     udp_total_bytes: usize,
     tcp_total_bytes: usize,
-    icmp_total_bytes: usize,
-    arp_total_bytes: usize,
+    icmp_count_reqs: usize,
 }
 
 impl DestinationStats {
@@ -116,12 +107,8 @@ impl DestinationStats {
         self.tcp_total_bytes += bytes;
     }
 
-    fn add_icmp(&mut self, bytes: usize) {
-        self.icmp_total_bytes += bytes;
-    }
-
-    fn add_arp(&mut self, bytes: usize) {
-        self.arp_total_bytes += bytes;
+    fn add_icmp(&mut self, count: usize) {
+        self.icmp_count_reqs += count;
     }
 }
 
@@ -150,8 +137,7 @@ fn handle_udp_packet(dest_stats: &mut DestinationStatsMap, interface_name: &str,
                     DestinationStats {
                         udp_total_bytes: udp.get_length() as usize,
                         tcp_total_bytes: 0,
-                        icmp_total_bytes: 0,
-                        arp_total_bytes: 0,
+                        icmp_count_reqs: 0,
                     }
                 }
             }
@@ -205,8 +191,7 @@ fn handle_icmp_packet(dest_stats: &mut DestinationStatsMap, interface_name: &str
                     DestinationStats {
                         udp_total_bytes: 0,
                         tcp_total_bytes: 0,
-                        icmp_total_bytes: 1,
-                        arp_total_bytes: 0,
+                        icmp_count_reqs: 1,
                     }
                 }
             }
@@ -240,8 +225,7 @@ fn handle_icmpv6_packet(dest_stats: &mut DestinationStatsMap, interface_name: &s
                     DestinationStats {
                         udp_total_bytes: 0,
                         tcp_total_bytes: 0,
-                        icmp_total_bytes: 1,
-                        arp_total_bytes: 0,
+                        icmp_count_reqs: 1,
                     }
                 }
             }
@@ -275,8 +259,7 @@ fn handle_tcp_packet(dest_stats: &mut DestinationStatsMap, interface_name: &str,
                     DestinationStats {
                         udp_total_bytes: 0,
                         tcp_total_bytes: packet.len(),
-                        icmp_total_bytes: 0,
-                        arp_total_bytes: 0,
+                        icmp_count_reqs: 0,
                     }
                 }
             }
@@ -351,7 +334,7 @@ fn handle_ipv6_packet(dest_stats: &mut DestinationStatsMap, interface_name: &str
     }
 }
 
-fn handle_arp_packet(dest_stats: &mut DestinationStatsMap, interface_name: &str, ethernet: &EthernetPacket) {
+fn handle_arp_packet(interface_name: &str, ethernet: &EthernetPacket) {
     let header = ArpPacket::new(ethernet.payload());
     if let Some(header) = header {
         debug_println!("[{}]: ARP packet: {}({}) > {}({}); operation: {:?}",
@@ -361,7 +344,6 @@ fn handle_arp_packet(dest_stats: &mut DestinationStatsMap, interface_name: &str,
                  ethernet.get_destination(),
                  header.get_target_proto_addr(),
                  header.get_operation());
-
     } else {
         println!("[{}]: Malformed ARP Packet", interface_name);
     }
