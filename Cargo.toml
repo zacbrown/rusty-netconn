@@ -5,6 +5,8 @@ authors = ["Zac Brown <zacbrown@users.noreply.github.com>"]
 
 [dependencies]
 pcap = { version = "0.7", features = ["tokio"] }
+lazy_static = "1.0"
+prettytable-rs = "^0.6"
 
 [dependencies.pnet]
 version = "0.21.0"
