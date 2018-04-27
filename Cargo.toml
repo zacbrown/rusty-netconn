@@ -1,0 +1,10 @@
+[package]
+name = "rusty-netconns"
+version = "0.1.0"
+authors = ["Zac Brown <zacbrown@users.noreply.github.com>"]
+
+[dependencies]
+pcap = { version = "0.7", features = ["tokio"] }
+
+[dependencies.pnet]
+version = "0.21.0"
